@@ -5,6 +5,7 @@ import pandas as pd
 import glob 
 import scipy.io as scio
 import scipy.signal
+import os
 
 nmonkey = 0
 nses    = 0
@@ -24,7 +25,7 @@ dirs = {'rawdata':'GrayLab/',
 # Create session dicitionary
 #--------------------------------------------------------------------------
 session = {'dir'        :dirs['rawdata']+dirs['monkey'][nmonkey]+'/'+dirs['date'][nmonkey][nses]+'/'+str(dirs['session']+'/'),
-		   'dir_out'    :dirs['results']+dirs['monkey'][nmonkey]+'/',
+		   'dir_out'    :dirs['results']+dirs['monkey'][nmonkey]+'/'+dirs['date'][nmonkey][nses]+'/'+str(dirs['session']+'/'),
 		   'fname_base' :dirs['date'][nmonkey][nses],
 		   'evt_names'  :['samplecor','sampleinc','samplecorinc'],
 		   'evt_trinfo' :['sample_on','match_on'],
@@ -33,6 +34,8 @@ session = {'dir'        :dirs['rawdata']+dirs['monkey'][nmonkey]+'/'+dirs['date'
 		   'df'         :4,
 		   'dt'         :250,
 		   'step'       :25,}
+# Create out folder
+os.makedirs(session['dir_out'])
 
 #--------------------------------------------------------------------------
 # Recording and trials info dicitionaries
@@ -102,7 +105,7 @@ trial_info['choice'] = choice;
 
 # Loop over trials
 i = 1
-data_prep = {'trial':{}, 'time':{}, 'fsample':recording_info['fsample'], 'trial_info': np.zeros([len(indt), 5])}
+data_prep = {'trial':[], 'time':[], 'fsample':recording_info['fsample'], 'trial_info': np.zeros(5)}
 delta_t   = 1.0 / data_prep['fsample']
 for nt in indt:
 	lfp_data = np.transpose( h5py.File(files[nt-1])['lfp_data'] )
@@ -112,17 +115,19 @@ for nt in indt:
 	# Find time index
 	ind = np.arange(indb, inde+1).astype(int)
 	# cell-array containing a time axis for each trial (1 X Ntrial), each time axis is a 1 X Nsamples vector
-	data_prep['trial'][str(i)] = lfp_data[indch-1, indb:inde+1]
+	data_prep['trial'].append( lfp_data[indch-1, indb:inde+1] )
 	del lfp_data
 	# cell-array containing a time axis for each trial (1 X Ntrial), each time axis is a 1 X Nsamples vector
-	data_prep['time'][str(i)]  = np.arange(session['evt_dt'][nevt][0], session['evt_dt'][nevt][1]+delta_t, delta_t) 
+	data_prep['time'].append( np.arange(session['evt_dt'][nevt][0], session['evt_dt'][nevt][1]+delta_t, delta_t) ) 
 	# Keep track of [ real trial number, sample image, choice, outcome (correct or incorrect), reaction time ]
-	data_prep['trial_info'][i-1] = np.array([nt, trial_info['sample_image'][nt-1], trial_info['choice'][nt-1], trial_info['behavioral_response'][nt-1], trial_info['reaction_time'][nt-1]/1000.0])
+	info_aux = np.array([nt, trial_info['sample_image'][nt-1], trial_info['choice'][nt-1], trial_info['behavioral_response'][nt-1], trial_info['reaction_time'][nt-1]/1000.0])
+	data_prep['trial_info'] = np.vstack((data_prep['trial_info'], info_aux))
+	np.savetxt(session['dir_out']+'trial'+str(i)+'.dat', data_prep['trial'][i-1])
 	i = i + 1
 
-labels = []#np.zeros([len(indch), 1]).astype(str)
+labels = np.zeros(len(indch))
 for nc in range(len(indch)):
-	labels.append( recording_info['channel_numbers'][indch[nc]-1] ) 
+	labels = np.append(labels,  recording_info['channel_numbers'][indch[nc]-1] )
 
 # Parameters
 N = len(labels)
@@ -132,12 +137,9 @@ nT = data_prep['trial_info'].shape[0]
 data_prep['label'] = np.array( labels )
 
 
-scio.savemat('test.mat', data_prep)
-
 '''
 ch = [0, 10, 37, 45]
 trial = ['1', '250', '470', '540']
-
 i = 1
 for t in trial:
 	for c in ch:
